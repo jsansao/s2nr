@@ -1,26 +1,33 @@
-function  HNR_medio = s2nr_call(filename, NFFT , RTH, alpha)
-% Programa de calibracao do Detector de SNR/HNR
-% Joao SANSAO, Maurilio VIEIRA, Fev. 2007
-%Janela da Transformada de Fourier
-NFFT
-% Overlap das janelas
-NOVERLAP = ceil(alpha* NFFT); % 0.9 ok 
-%Flag para reproducao da voz testada => 1 reproduz
-reproduz = 0;
-%Parametro de Reamostragem:
-reamostra = 0;
-P =1;
-Q =1;
+function  [S2NR, T_axis, S2NR_mean] = s2nr_call(filename, NFFT , ...
+                                                RTH, alpha, sigma)
+% S2NR call procedure 
+%   usage:
+%    [S2NR, T_axis, S2NR_mean] = s2nr_call(filename, NFFT , RTH,
+%    alpha)
+% NFFT: fft window size 
+% RTH: reliability threshold
+% alpha: fft window overlap 
+% sigma: image segmentation threshold
+%
+% 
+% Example call:
+%
+%   [S2NR, T_axis, S2NR_mean] = s2nr_call('vowel_a.wav', 512 , ...
+%                                                0.6, 0.9, 0.1)
+% 
+% Joao SANSAO, Maurilio VIEIRA, Feb 2007-Abril 2011
+%
 
 
+% Window overlap
+NOVERLAP = ceil(alpha * NFFT); 
 %Parametros gerais:
-OFFSET = 10; %offset da imagem/pre-processamento
+OFFSET = 10; %image offset /pre-processing
 
-
-% incluir verificação se houve passagem de parâmetro
+% default parameters 
 param.eps = 1e-16;
 param.blksze1 = 5; 
-param.thresh = 1e-1; 
+param.thresh = sigma; 
 param.blksze2 = 16;
 param.gradientsigma = 1;
 param.blocksigma = 5;	
@@ -34,54 +41,34 @@ param.rthresh = RTH;
 param.OFFSET = OFFSET;
 param.NFFT = NFFT;
 param.NOVERLAP = NOVERLAP;
-param.P = P;
-param.Q = Q;
-param.show = 0.50; 
 
-%loop principal
-DadosSaida = [];
+[Y,FS] = wavread(filename);
 
-
-[Ys,FS] = wavread(filename);
-
-%etapa de reamostragem
-% if (reamostra)
-% 	FS = P * FS / Q; 
-% 	Y = RESAMPLE(Ys,P,Q);
-% else
-% 	Y = Ys;
-% end
-
-Y = Ys;
 param.TotalTime = (length(Y) - 1)/FS ;
 param.FS = FS;
 
-%normalizacao: maior valor absoluto unitario
 Y = Y / max(abs(Y));
 		
-%Geracao do Espectro a ser analisado
+%Generate spectrographic image
 		
-[AmpliNorm,AmpliNormLog] = GeraEspectro( Y, NFFT, FS, NOVERLAP);
+[AmpliNorm,AmpliNormLog] = GenerateSpectrum( Y, NFFT, FS, NOVERLAP);
 
 sizeAmpli = size(AmpliNorm);
 		
-%Pre-processamento : zero-padding 	
-EntEspectro = [ zeros(OFFSET,sizeAmpli(2)); AmpliNorm(1:(end),:)];
-EntEspectroLog = [ zeros(OFFSET,sizeAmpli(2)); AmpliNormLog(1:(end),:)];
-% Chamada Principal, calculo do SNR e HNR
-[HNR,SNR] = s2nr_measurement(EntEspectro, EntEspectroLog,param);
+%Pre-processing : zero-padding 	
+SpectrumInput = [ zeros(OFFSET,sizeAmpli(2)); AmpliNorm(1:(end),:)];
+SpectrumInputLog = [ zeros(OFFSET,sizeAmpli(2)); AmpliNormLog(1:(end),:)];
 
-valHNR = 10 * log10 (mean(10 .^ (HNR( floor(0.25*end):floor(0.75*end) )/10) ))
-valSNR = 10 * log10 (mean(10 .^ (SNR( floor(0.25*end):floor(0.75*end) )/10) ));
+% Main call, s2nr measurement
+[S2NR,SNR] = s2nr_measurement(SpectrumInput, SpectrumInputLog,param);
 
-HNR_medio = valHNR;
+T_axis = (0:(length(S2NR)-1))/FS;
 
-SNR_medio = valSNR;
-
-plot(HNR)
+S2NR_mean = 10 * log10 (mean(10 .^ (S2NR( floor(0.25*end):floor(0.75*end) )/10) ))
 
 
-function [AmpliNorm,AmpliNormLog] = GeraEspectro( Y, NFFT, FS, NOVERLAP)
+
+function [AmpliNorm,AmpliNormLog] = GenerateSpectrum( Y, NFFT, FS, NOVERLAP)
 	
 B = spectrogram(Y,NFFT,NOVERLAP,NFFT,FS);
 Ampli = abs(B);
